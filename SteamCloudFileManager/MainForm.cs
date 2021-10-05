@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using System.IO;
+using System.IO.Compression;
 
 namespace SteamCloudFileManager
 {
@@ -90,24 +91,78 @@ namespace SteamCloudFileManager
             }
             if (remoteListView.SelectedIndices.Count != 1)
             {
-                MessageBox.Show(this, "Please select only one file.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
-                return;
+                DialogResult result = MessageBox.Show(this, "Are you sure you want to download multiple files?", "Confirmation", MessageBoxButtons.YesNo);
+                if (result.Equals(DialogResult.No))
+                {
+                    return;
+                }
             }
 
-            IRemoteFile file = remoteListView.SelectedItems[0].Tag as IRemoteFile;
-            saveFileDialog1.FileName = Path.GetFileName(file.Name);
-            if (saveFileDialog1.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+            if (remoteListView.SelectedIndices.Count > 1)
             {
-                try
+                saveFileDialog1.FileName = this.appIdTextBox.Text + "-Files.zip";
+
+                if (saveFileDialog1.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
                 {
-                    File.WriteAllBytes(saveFileDialog1.FileName, file.ReadAllBytes());
-                    MessageBox.Show(this, "File downloaded.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    List<String> failedDownloads = new List<String>();
+                    ZipArchive zip = ZipFile.Open(saveFileDialog1.FileName, ZipArchiveMode.Create);
+                    foreach (ListViewItem item in remoteListView.SelectedItems)
+                    {
+                        IRemoteFile file = item.Tag as IRemoteFile;
+                        try
+                        {
+                            Byte[] data = file.ReadAllBytes();
+                            var entry = zip.CreateEntry(file.Name);
+                            var stream = entry.Open();
+                            stream.Write(data, 0, data.Length);
+                            stream.Close();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(ex.Message);
+                            failedDownloads.Add(file.Name);
+                        }
+                    }
+                    zip.Dispose();
+                    if (failedDownloads.Count > 0)
+                    {
+                        String msg = "Some files failed to download.";
+                        foreach (var failure in failedDownloads)
+                        {
+                            msg += "\n" + failure;
+                        }
+                        MessageBox.Show(this, msg, "Error", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+
+                    }
+                    else
+                    {
+                        MessageBox.Show(this, "All Files Downloaded Successfully!", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+
                 }
-                catch (Exception ex)
+            } else
+            {
+                IRemoteFile file = remoteListView.SelectedItems[0].Tag as IRemoteFile;
+                saveFileDialog1.FileName = Path.GetFileName(file.Name);
+                if (saveFileDialog1.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
                 {
-                    MessageBox.Show(this, "File download failed." + Environment.NewLine + ex.ToString(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                    try
+                    {
+                        File.WriteAllBytes(saveFileDialog1.FileName, file.ReadAllBytes());
+                        MessageBox.Show(this, "File downloaded.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, "File download failed." + Environment.NewLine + ex.ToString(), "Error", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                    }
                 }
             }
+        }
+
+        private void createAllSubDirectories(String path)
+        {
+            String dir = Path.GetDirectoryName(path);
+            Directory.CreateDirectory(dir);
         }
 
         private void deleteButton_Click(object sender, EventArgs e)
